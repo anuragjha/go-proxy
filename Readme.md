@@ -9,3 +9,6 @@
 
 Command utils:
 `nc <ip> <port>` - will create connection (conn stream) to ip:port
+
+
+Learning Resource: https://www.youtube.com/watch?v=afSiVelXDTQ&list=PLpOlyC6B9Zti5qTKT_matGziDY8oDVgIs&index=25
