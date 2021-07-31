@@ -5,18 +5,36 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
-const version = "v0.0.0"
+var echoAddress = "localhost:5001"
+var proxyAddress = "localhost:5000"
 
 func main() {
-	log.Print("Starting go-proxy:", version)
+	log.Printf("Starting echo: %s and proxy: %s", echoAddress, proxyAddress)
 
-	l, err := net.Listen("tcp", "localhost:5001")
+	// echoAddress Listen and Serve
+	go listenAndServe("tcp", echoAddress, echo)
+	// proxyAddress listen and serve to above listener
+	go listenAndServe("tcp", proxyAddress, proxy)
+
+	// Shutdown channel
+	sigChan := make(chan os.Signal, 1)
+	// Listen for close sig
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	exit := <-sigChan
+	log.Printf("Shutting down with code %s", exit)
+}
+
+func listenAndServe(network string, address string, fn func(conn net.Conn)) {
+	l, err := net.Listen(network, address)
 	if err != nil {
 		log.Fatal("Listener: ", err)
 	}
+	log.Printf("%s / %s", network, address)
 
 	for {
 		conn, err := l.Accept()
@@ -24,15 +42,14 @@ func main() {
 			log.Fatal("Conn: ", err)
 		}
 
-		//go copyToStdErr(conn)
-		go proxy(conn)
+		go fn(conn)
 	}
 }
 
 func proxy(inConn net.Conn) {
 	defer inConn.Close()
 
-	outConn, err := net.Dial("tcp", "google.com:80")
+	outConn, err := net.Dial("tcp", echoAddress)
 	if err != nil {
 		log.Printf("Dial conn finished in %v", err)
 		return
@@ -43,11 +60,11 @@ func proxy(inConn net.Conn) {
 	io.Copy(inConn, outConn)
 }
 
-func copyToStdErr(conn net.Conn) {
+func echo(conn net.Conn) {
 	defer conn.Close()
 
 	for {
-		err := conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		err := conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 		if err != nil {
 			log.Printf("SetReadDeadline finished with err: %v", err)
 		}
@@ -57,7 +74,11 @@ func copyToStdErr(conn net.Conn) {
 			log.Printf("Read from conn finished with err: %v", err)
 			return
 		}
-		os.Stderr.Write(buf[:n])
-	}
 
+		os.Stderr.Write([]byte("Request: "))
+		os.Stderr.Write(buf[:n])
+
+		conn.Write([]byte("Response: "))
+		conn.Write(buf[:n])
+	}
 }
